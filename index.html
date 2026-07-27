@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>📸 Pro Camera</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Permission Overlay -->
+  <div id="permission-overlay">
+    <div class="spinner"></div>
+    <p>क्यामेरा खोल्न अनुमति माग्दै...</p>
+    <div id="perm-error" class="error" style="display:none;"></div>
+  </div>
+
+  <!-- Top Bar -->
+  <div id="top-bar" style="display:none;">
+    <div class="left">
+      <span class="status-dot online" id="statusDot"></span>
+      <span class="title">📸 Pro Camera</span>
+    </div>
+    <div class="right">
+      <button class="top-btn" id="gridBtn">📐 Grid</button>
+      <button class="top-btn" id="timerBtn">⏱️ 0s</button>
+      <button class="top-btn" id="flashBtn">🔦 Flash</button>
+    </div>
+  </div>
+
+  <!-- Camera -->
+  <div id="camera-container" style="display:none;">
+    <video id="video" autoplay playsinline></video>
+    <div id="grid-overlay"><div class="hline"></div><div class="hline"></div><div class="vline"></div><div class="vline"></div></div>
+    <div id="flash-overlay"></div>
+    <div id="countdown-display"></div>
+    <div id="zoom-indicator">1.0x</div>
+  </div>
+
+  <!-- Zoom -->
+  <div id="zoom-area" style="display:none;">
+    <div class="zoom-row">
+      <label>🔍</label>
+      <input type="range" id="zoomSlider" min="1" max="10" step="0.05" value="1" />
+      <span id="zoom-value">1.0x</span>
+    </div>
+  </div>
+
+  <!-- Bottom Bar -->
+  <div id="bottom-bar" style="display:none;">
+    <div id="gallery-thumb">
+      <img id="galleryImg" style="display:none;" alt="Last" />
+    </div>
+    <button class="bottom-btn" id="flipBtn"><span class="icon">🔄</span><span class="bottom-label">Flip</span></button>
+    <div id="capture-btn"><div class="inner"></div></div>
+    <button class="bottom-btn" id="effectsBtn"><span class="icon">🎨</span><span class="bottom-label">Effect</span></button>
+    <button class="bottom-btn" id="aspectBtn"><span class="icon">📐</span><span class="bottom-label" id="aspectLabel">16:9</span></button>
+  </div>
+
+  <!-- Dropdowns -->
+  <div class="dropdown-overlay" id="effectsDropdown">
+    <div class="item selected" data-effect="none">Normal</div>
+    <div class="item" data-effect="sepia">Sepia</div>
+    <div class="item" data-effect="grayscale">Grayscale</div>
+    <div class="item" data-effect="blur">Blur</div>
+    <div class="item" data-effect="invert">Invert</div>
+    <div class="item" data-effect="brightness">Brightness</div>
+    <div class="item" data-effect="contrast">Contrast</div>
+    <div class="item" data-effect="hue">Hue Rotate</div>
+    <div class="item" data-effect="pixelated">Pixelated</div>
+  </div>
+  <div class="dropdown-overlay" id="aspectDropdown">
+    <div class="item" data-aspect="free">Free (Full)</div>
+    <div class="item" data-aspect="1:1">1:1</div>
+    <div class="item" data-aspect="4:3">4:3</div>
+    <div class="item selected" data-aspect="16:9">16:9</div>
+    <div class="item" data-aspect="21:9">21:9</div>
+  </div>
+
+  <!-- Fly Image -->
+  <img id="fly-img" />
+
+  <script src="app.js"></script>
+</body>
+</html>
