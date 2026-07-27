@@ -186,16 +186,55 @@ body {
 }
 #zoom-indicator.show { opacity: 1; }
 
-/* ===== ZOOM SLIDER ===== */
+/* ===== ZOOM AREA (Presets + Slider) ===== */
 #zoom-area {
   flex-shrink: 0;
-  padding: 4px 16px 2px;
-  background: rgba(0,0,0,0.6);
+  padding: 4px 12px 2px;
+  background: rgba(0,0,0,0.7);
   backdrop-filter: blur(4px);
   z-index: 10;
 }
-#zoom-area .zoom-row { display: flex; align-items: center; gap: 10px; }
-#zoom-area label { font-size: 13px; color: #aaa; min-width: 28px; }
+.zoom-presets {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  padding-bottom: 4px;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+.zoom-preset {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.15s;
+  touch-action: manipulation;
+  flex-shrink: 0;
+  min-height: 24px;
+}
+.zoom-preset:active {
+  transform: scale(0.92);
+  background: #3b82f6;
+}
+.zoom-preset.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+#zoom-area .zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#zoom-area label {
+  font-size: 13px;
+  color: #aaa;
+  min-width: 28px;
+}
 #zoom-area input[type="range"] {
   flex: 1;
   -webkit-appearance: none;
@@ -225,7 +264,13 @@ body {
   cursor: pointer;
   border: 2px solid #fff;
 }
-#zoom-value { font-size: 13px; font-weight: 600; color: #fff; min-width: 40px; text-align: right; }
+#zoom-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  min-width: 44px;
+  text-align: right;
+}
 
 /* ===== BOTTOM BAR ===== */
 #bottom-bar {
@@ -366,7 +411,8 @@ body {
   #capture-btn .inner { width: 48px; height: 48px; }
   #gallery-thumb { width: 42px; height: 42px; }
   #countdown-display { font-size: 60px; }
-  #zoom-area { padding: 2px 12px; }
+  #zoom-area { padding: 2px 8px; }
+  .zoom-preset { font-size: 8px; padding: 1px 6px; min-height: 20px; }
   #zoom-area input[type="range"]::-webkit-slider-thumb { width: 16px; height: 16px; }
   .dropdown-overlay { min-width: 120px; bottom: 78px; }
   .dropdown-overlay .item { padding: 8px 12px; font-size: 13px; }

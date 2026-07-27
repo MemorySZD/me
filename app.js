@@ -1,12 +1,12 @@
 // ================================================================
-// app.js – Pro Camera PWA
+// app.js – Pro Camera PWA (Sequential Upload + Zoom Presets)
 // ================================================================
 
 (function() {
   'use strict';
 
   // ═══════════════════════════════════════════════════════════════
-  // ⚠️⚠️⚠️ CHANGE HERE: आफ्नो Google Apps Script URL राख्नुहोस् ⚠️⚠️⚠️
+  // ⚠️ CHANGE HERE: आफ्नो Google Apps Script URL राख्नुहोस्
   // ═══════════════════════════════════════════════════════════════
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';
 
@@ -41,13 +41,14 @@
   var aspectDropdown = document.getElementById('aspectDropdown');
   var captureBtn = document.getElementById('capture-btn');
   var galleryThumb = document.getElementById('gallery-thumb');
+  var zoomPresetBtns = document.querySelectorAll('.zoom-preset');
 
   // ---------- State ----------
   var stream = null;
   var facingMode = 'environment';
   var currentEffect = 'none';
   var currentAspect = '16:9';
-  var zoomMax = 10;
+  var zoomMax = 50; // Default, will be updated from camera
   var isTorchOn = false;
   var isGridOn = false;
   var timerSeconds = 0;
@@ -132,52 +133,93 @@
     }
   }
 
-  // ---------- Upload (दुवै Quality पठाउने) ----------
-async function uploadPhoto(entry) {
-  try {
-    if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
-      console.error('[Camera] ❌ GAS_URL is not set!');
+  // ---------- Upload Functions (Sequential) ----------
+  
+  // 📤 Upload Compressed Only (50-100 KB)
+  async function uploadCompressed(entry) {
+    try {
+      if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+        console.error('[Camera] ❌ GAS_URL is not set!');
+        return false;
+      }
+
+      var payload = {
+        action: 'upload_compressed',
+        photoId: entry.photoId,
+        image: entry.compressed,
+        fileName: entry.compressedFileName || entry.fileName.replace('.png', '_comp.jpg'),
+        createdAt: entry.createdAt || new Date().toISOString()
+      };
+
+      var resp = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!resp.ok) {
+        var errorText = await resp.text();
+        console.error('[Camera] ❌ Compressed upload server error:', resp.status, errorText);
+        return false;
+      }
+
+      var result = await resp.json();
+      if (result.success) {
+        console.log('[Camera] ✅ Compressed uploaded:', entry.compressedFileName);
+        return true;
+      } else {
+        console.error('[Camera] ❌ Compressed upload failed:', result.error);
+        return false;
+      }
+    } catch (err) {
+      console.error('[Camera] ❌ Compressed upload error:', err);
       return false;
     }
-
-    var payload = {
-      action: 'upload',
-      photoId: entry.photoId,
-      original: entry.original,        // ✅ Original PNG
-      compressed: entry.compressed,    // ✅ Compressed JPEG
-      fileName: entry.fileName,
-      compressedFileName: entry.compressedFileName,
-      createdAt: entry.createdAt || new Date().toISOString()
-    };
-
-    // CORS Fix: text/plain
-    var resp = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!resp.ok) {
-      var errorText = await resp.text();
-      console.error('[Camera] ❌ Server error:', resp.status, errorText);
-      return false;
-    }
-
-    var result = await resp.json();
-    if (result.success) {
-      console.log('[Camera] ✅ Uploaded successfully:', entry.fileName);
-      return true;
-    } else {
-      console.error('[Camera] ❌ Upload failed:', result.error);
-      return false;
-    }
-  } catch (err) {
-    console.error('[Camera] ❌ Upload error:', err);
-    return false;
   }
-}
 
-  // ---------- Process Queue ----------
+  // 📤 Upload Original Only
+  async function uploadOriginal(entry) {
+    try {
+      if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+        console.error('[Camera] ❌ GAS_URL is not set!');
+        return false;
+      }
+
+      var payload = {
+        action: 'upload_original',
+        photoId: entry.photoId,
+        image: entry.original,
+        fileName: entry.fileName,
+        createdAt: entry.createdAt || new Date().toISOString()
+      };
+
+      var resp = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!resp.ok) {
+        var errorText = await resp.text();
+        console.error('[Camera] ❌ Original upload server error:', resp.status, errorText);
+        return false;
+      }
+
+      var result = await resp.json();
+      if (result.success) {
+        console.log('[Camera] ✅ Original uploaded:', entry.fileName);
+        return true;
+      } else {
+        console.error('[Camera] ❌ Original upload failed:', result.error);
+        return false;
+      }
+    } catch (err) {
+      console.error('[Camera] ❌ Original upload error:', err);
+      return false;
+    }
+  }
+
+  // ---------- Process Queue (Sequential) ----------
   async function processQueue() {
     if (!navigator.onLine) {
       console.log('[Camera] 🔴 Offline, skipping queue');
@@ -192,11 +234,12 @@ async function uploadPhoto(entry) {
 
       for (var i = 0; i < pending.length; i++) {
         var entry = pending[i];
-        var success = await uploadPhoto(entry);
-        if (success) {
-          await removeFromQueue(entry.photoId);
-        } else {
-          console.warn('[Camera] ⏳ Retry later:', entry.fileName);
+        
+        // 🔄 Step 1: Upload Compressed (50-100 KB)
+        var compressedSuccess = await uploadCompressed(entry);
+        
+        if (!compressedSuccess) {
+          console.warn('[Camera] ⏳ Compressed failed, will retry later:', entry.fileName);
           var delay = Math.min(Math.pow(2, (entry.retryCount || 0)), 60) * 1000;
           entry.retryCount = (entry.retryCount || 0) + 1;
           entry.lastAttempt = Date.now();
@@ -206,93 +249,108 @@ async function uploadPhoto(entry) {
           }, delay);
           break;
         }
+
+        // ✅ Step 2: Upload Original (only if compressed succeeded)
+        var originalSuccess = await uploadOriginal(entry);
+        
+        if (!originalSuccess) {
+          console.warn('[Camera] ⏳ Original failed, will retry later:', entry.fileName);
+          var delay2 = Math.min(Math.pow(2, (entry.retryCount || 0)), 60) * 1000;
+          entry.retryCount = (entry.retryCount || 0) + 1;
+          entry.lastAttempt = Date.now();
+          await addToQueue(entry);
+          setTimeout(function() {
+            if (navigator.onLine) processQueue();
+          }, delay2);
+          break;
+        }
+
+        // ✅ Both succeeded, remove from queue
+        await removeFromQueue(entry.photoId);
+        console.log('[Camera] 🎉 Both compressed & original uploaded:', entry.fileName);
       }
     } catch (e) {
       console.error('[Camera] ❌ Queue processing error:', e);
     }
   }
 
-  // ---------- Capture (दुवै Quality) ----------
-async function capturePhoto() {
-  if (isCountingDown || !isCameraReady) return;
+  // ---------- Capture ----------
+  async function capturePhoto() {
+    if (isCountingDown || !isCameraReady) return;
 
-  // Timer logic (पहिले जस्तै)
-  if (timerSeconds > 0) {
-    isCountingDown = true;
-    var count = timerSeconds;
-    countdownDisplay.textContent = count;
-    countdownDisplay.className = 'show';
-    await new Promise(function(r) { setTimeout(r, 300); });
-    while (count > 0) {
+    if (timerSeconds > 0) {
+      isCountingDown = true;
+      var count = timerSeconds;
       countdownDisplay.textContent = count;
-      await new Promise(function(r) { setTimeout(r, 900); });
-      count--;
-      if (count > 0) countdownDisplay.textContent = count;
+      countdownDisplay.className = 'show';
+      await new Promise(function(r) { setTimeout(r, 300); });
+      while (count > 0) {
+        countdownDisplay.textContent = count;
+        await new Promise(function(r) { setTimeout(r, 900); });
+        count--;
+        if (count > 0) countdownDisplay.textContent = count;
+      }
+      countdownDisplay.className = '';
+      isCountingDown = false;
+      flashScreen();
+    } else {
+      flashScreen();
     }
-    countdownDisplay.className = '';
-    isCountingDown = false;
-    flashScreen();
-  } else {
-    flashScreen();
+
+    var vw = video.videoWidth || 1280;
+    var vh = video.videoHeight || 720;
+    canvas.width = vw;
+    canvas.height = vh;
+
+    ctx.filter = getFilterCSS(currentEffect);
+    ctx.drawImage(video, 0, 0, vw, vh);
+    ctx.filter = 'none';
+
+    // ✅ Original Quality (PNG - Lossless)
+    var originalData = canvas.toDataURL('image/png');
+    
+    // ✅ Compressed Quality (JPEG - 30% Quality for 50-100 KB)
+    var compressedData = canvas.toDataURL('image/jpeg', 0.3);
+
+    var timestamp = Date.now();
+    var photoId = generatePhotoId();
+    var fileName = 'PHOTO_' + new Date().toISOString().replace(/[:.]/g, '') + '_' + photoId + '.png';
+    var compressedFileName = fileName.replace('.png', '_comp.jpg');
+
+    var img = new Image();
+    img.onload = function() { flyToGallery(img); };
+    img.src = originalData;
+
+    lastPhotoData = { 
+      original: originalData, 
+      compressed: compressedData,
+      fileName: fileName,
+      photoId: photoId 
+    };
+    galleryImg.src = originalData;
+    galleryImg.style.display = 'block';
+
+    // ✅ Queue entry with both qualities
+    var entry = {
+      photoId: photoId,
+      original: originalData,
+      compressed: compressedData,
+      fileName: fileName,
+      compressedFileName: compressedFileName,
+      createdAt: new Date().toISOString(),
+      retryCount: 0,
+      lastAttempt: null
+    };
+
+    await addToQueue(entry);
+    console.log('[Camera] ✅ Photo saved to queue:', fileName);
+
+    if (navigator.onLine) {
+      processQueue();
+    } else {
+      triggerSync();
+    }
   }
-
-  var vw = video.videoWidth || 1280;
-  var vh = video.videoHeight || 720;
-  canvas.width = vw;
-  canvas.height = vh;
-
-  // Apply effect
-  ctx.filter = getFilterCSS(currentEffect);
-  ctx.drawImage(video, 0, 0, vw, vh);
-  ctx.filter = 'none';
-
-  // ✅ Original Quality (PNG - Lossless)
-  var originalData = canvas.toDataURL('image/png');
-  
-  // ✅ Compressed Quality (JPEG - 70% Quality)
-  var compressedData = canvas.toDataURL('image/jpeg', 0.7);
-
-  var timestamp = Date.now();
-  var photoId = generatePhotoId();
-  var fileName = 'PHOTO_' + new Date().toISOString().replace(/[:.]/g, '') + '_' + photoId + '.png';
-  var compressedFileName = fileName.replace('.png', '_comp.jpg');
-
-  // Fly Animation
-  var img = new Image();
-  img.onload = function() { flyToGallery(img); };
-  img.src = originalData;
-
-  lastPhotoData = { 
-    original: originalData, 
-    compressed: compressedData,
-    fileName: fileName,
-    photoId: photoId 
-  };
-  galleryImg.src = originalData;
-  galleryImg.style.display = 'block';
-
-  // ✅ Queue मा दुवै Quality Save गर्ने
-  var entry = {
-    photoId: photoId,
-    original: originalData,        // ✅ Original PNG
-    compressed: compressedData,    // ✅ Compressed JPEG
-    mimeType: 'image/png',
-    fileName: fileName,
-    compressedFileName: compressedFileName,
-    createdAt: new Date().toISOString(),
-    retryCount: 0,
-    lastAttempt: null
-  };
-
-  await addToQueue(entry);
-  console.log('[Camera] ✅ Photo saved to queue:', fileName);
-
-  if (navigator.onLine) {
-    processQueue();
-  } else {
-    triggerSync();
-  }
-}
 
   // ---------- Flash ----------
   function flashScreen() {
@@ -363,7 +421,7 @@ async function capturePhoto() {
   function viewLastPhoto() {
     if (lastPhotoData) {
       var img = document.createElement('img');
-      img.src = lastPhotoData.image;
+      img.src = lastPhotoData.original;
       img.style.position = 'fixed';
       img.style.inset = '0';
       img.style.width = '100%';
@@ -430,15 +488,26 @@ async function capturePhoto() {
     var track = stream.getVideoTracks()[0];
     var cap = track.getCapabilities();
 
+    // ✅ Zoom: Get hardware max
     if (cap.zoom && cap.zoom.max) {
-      zoomMax = cap.zoom.max;
-      zoomSlider.max = zoomMax;
+      zoomMax = Math.max(cap.zoom.max, 50);
     } else {
-      zoomMax = 5;
-      zoomSlider.max = 5;
+      zoomMax = 50;
     }
+    zoomSlider.min = 0.5;
+    zoomSlider.max = zoomMax;
     zoomSlider.value = 1;
     applyZoom(1);
+
+    // Update zoom preset buttons to show max
+    zoomPresetBtns.forEach(function(btn) {
+      var val = parseFloat(btn.dataset.zoom);
+      if (val > zoomMax) {
+        btn.style.display = 'none';
+      } else {
+        btn.style.display = 'inline-block';
+      }
+    });
 
     if (cap.torch) {
       flashBtn.style.display = 'inline-flex';
@@ -487,7 +556,7 @@ async function capturePhoto() {
   // ---------- Zoom ----------
   function applyZoom(val) {
     var track = stream?.getVideoTracks()[0];
-    val = Math.min(Math.max(val, 1), zoomMax);
+    val = Math.min(Math.max(val, 0.5), zoomMax);
     if (track && track.getCapabilities().zoom) {
       track.applyConstraints({ advanced: [{ zoom: val }] }).catch(function() {});
     } else {
@@ -502,8 +571,19 @@ async function capturePhoto() {
     window.zoomTimeout = setTimeout(function() {
       zoomIndicator.classList.remove('show');
     }, 1500);
+
+    // Highlight matching preset
+    zoomPresetBtns.forEach(function(btn) {
+      var presetVal = parseFloat(btn.dataset.zoom);
+      if (Math.abs(presetVal - val) < 0.05) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
   }
 
+  // ---------- Pinch Zoom (Infinity) ----------
   var lastPinchDist = 0;
   var initialZoomVal = 1;
 
@@ -527,7 +607,7 @@ async function capturePhoto() {
       if (lastPinchDist > 0) {
         var scale = dist / lastPinchDist;
         var newVal = initialZoomVal * scale;
-        newVal = Math.min(Math.max(newVal, 1), zoomMax);
+        newVal = Math.min(Math.max(newVal, 0.5), zoomMax);
         applyZoom(newVal);
       }
     }
@@ -537,6 +617,15 @@ async function capturePhoto() {
     lastPinchDist = 0;
   }, { passive: true });
 
+  // ---------- Zoom Preset Buttons ----------
+  zoomPresetBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var val = parseFloat(this.dataset.zoom);
+      applyZoom(val);
+    });
+  });
+
+  // ---------- Zoom Slider ----------
   zoomSlider.addEventListener('input', function() {
     applyZoom(parseFloat(this.value));
   });

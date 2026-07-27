@@ -1,9 +1,9 @@
 // ================================================================
-// sw.js – Service Worker
+// sw.js – Service Worker (Sequential Upload)
 // ================================================================
 
 // ═══════════════════════════════════════════════════════════════
-// ⚠️⚠️⚠️ CHANGE HERE: Apps Script URL (उही) ⚠️⚠️⚠️
+// ⚠️ CHANGE HERE: Apps Script URL (उही)
 // ═══════════════════════════════════════════════════════════════
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';
 
@@ -38,33 +38,62 @@ async function handleSync() {
     for (var i = 0; i < queue.length; i++) {
       var entry = queue[i];
       try {
-        var payload = {
-          action: 'upload',
+        // 📤 Step 1: Compressed
+        var compressedPayload = {
+          action: 'upload_compressed',
           photoId: entry.photoId,
-          image: entry.image,
-          mimeType: entry.mimeType || 'image/png',
+          image: entry.compressed,
+          fileName: entry.compressedFileName || entry.fileName.replace('.png', '_comp.jpg'),
+          createdAt: entry.createdAt || new Date().toISOString()
+        };
+
+        var compressedResp = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(compressedPayload)
+        });
+
+        if (!compressedResp.ok) {
+          throw new Error('Compressed upload HTTP ' + compressedResp.status);
+        }
+
+        var compressedResult = await compressedResp.json();
+        if (!compressedResult.success) {
+          throw new Error('Compressed upload failed: ' + JSON.stringify(compressedResult));
+        }
+
+        console.log('[SW] ✅ Compressed uploaded:', entry.compressedFileName);
+
+        // 📤 Step 2: Original (only if compressed succeeded)
+        var originalPayload = {
+          action: 'upload_original',
+          photoId: entry.photoId,
+          image: entry.original,
           fileName: entry.fileName,
           createdAt: entry.createdAt || new Date().toISOString()
         };
 
-        // ✅ CORS Fix: Use text/plain to avoid preflight
-        var resp = await fetch(GAS_URL, {
+        var originalResp = await fetch(GAS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(originalPayload)
         });
 
-        if (!resp.ok) {
-          throw new Error('HTTP ' + resp.status);
+        if (!originalResp.ok) {
+          throw new Error('Original upload HTTP ' + originalResp.status);
         }
 
-        var result = await resp.json();
-        if (result.success) {
-          await removeFromQueue(db, entry.photoId);
-          console.log('[SW] ✅ Uploaded:', entry.fileName);
-        } else {
-          throw new Error('Upload failed: ' + JSON.stringify(result));
+        var originalResult = await originalResp.json();
+        if (!originalResult.success) {
+          throw new Error('Original upload failed: ' + JSON.stringify(originalResult));
         }
+
+        console.log('[SW] ✅ Original uploaded:', entry.fileName);
+
+        // ✅ Both succeeded, remove from queue
+        await removeFromQueue(db, entry.photoId);
+        console.log('[SW] 🎉 Both uploaded:', entry.fileName);
+
       } catch (err) {
         console.warn('[SW] ⏳ Retry later:', entry.fileName, err.message);
         throw err;
