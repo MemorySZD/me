@@ -6,9 +6,11 @@
   'use strict';
 
   // ═══════════════════════════════════════════════════════════════
-  // 🔧 CHANGE HERE: आफ्नो Google Apps Script Web App URL राख्नुहोस्
+  // ⚠️⚠️⚠️ CHANGE HERE: आफ्नो Google Apps Script URL राख्नुहोस् ⚠️⚠️⚠️
+  //    URL Deploy गरेपछि प्राप्त हुन्छ (अन्त्यमा /exec हुनुपर्छ)
+  //    उदाहरण: https://script.google.com/macros/s/AKfycbx.../exec
   // ═══════════════════════════════════════════════════════════════
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';  // ✅ यो लाइन मात्र Change गर्नुहोस्
 
   // ---------- DOM Refs ----------
   var permOverlay = document.getElementById('permission-overlay');
@@ -55,20 +57,19 @@
   var lastPhotoData = null;
   var swRegistration = null;
   var isCameraReady = false;
-  var photoQueue = []; // Offline queue
+  var photoQueue = [];
 
-  // ---------- Utility: Generate Unique ID ----------
+  // ---------- Utility ----------
   function generatePhotoId() {
     return Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
   }
 
-  // ---------- IndexedDB (Offline Queue) with Version 2 ----------
+  // ---------- IndexedDB (Version 2) ----------
   function openDB() {
     return new Promise(function(res, rej) {
-      var req = indexedDB.open('PhotoQueueDB', 2); // ✅ Version bumped to 2
+      var req = indexedDB.open('PhotoQueueDB', 2);
       req.onupgradeneeded = function(e) {
         var db = e.target.result;
-        // Delete old store if exists (to ensure correct keyPath)
         if (db.objectStoreNames.contains('queue')) {
           db.deleteObjectStore('queue');
         }
@@ -134,10 +135,11 @@
     }
   }
 
-  // ---------- Upload to Google Apps Script ----------
+  // ---------- Upload ----------
   async function uploadPhoto(entry) {
     try {
-      if (!GAS_URL || GAS_URL === 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec') {
+      // ✅ GAS_URL सेट छ कि छैन Check गर्ने
+      if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
         console.error('[Camera] ❌ GAS_URL is not set!');
         return false;
       }
@@ -257,7 +259,6 @@
     galleryImg.src = imageData;
     galleryImg.style.display = 'block';
 
-    // ✅ Ensure entry has 'photoId' property
     var entry = {
       photoId: photoId,
       image: imageData,
@@ -607,12 +608,11 @@
   captureBtn.addEventListener('click', capturePhoto);
   galleryThumb.addEventListener('click', viewLastPhoto);
 
-  // Make functions global for onclick safety
   window.capturePhoto = capturePhoto;
   window.viewLastPhoto = viewLastPhoto;
 
   // ---------- Start ----------
-  if (!GAS_URL || GAS_URL === 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec') {
+  if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
     console.warn('[Camera] ⚠️ GAS_URL not set. Update app.js with your Apps Script URL.');
   }
 

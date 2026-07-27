@@ -3,9 +3,10 @@
 // ================================================================
 
 // ═══════════════════════════════════════════════════════════════
-// 🔧 CHANGE HERE: Apps Script URL (उही)
+// ⚠️⚠️⚠️ CHANGE HERE: यहाँ पनि उही URL राख्नुहोस् ⚠️⚠️⚠️
+//    (app.js मा राखेको जस्तै)
 // ═══════════════════════════════════════════════════════════════
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';  // ✅ यो लाइन मात्र Change गर्नुहोस्
 
 self.addEventListener('install', function(event) {
   event.waitUntil(self.skipWaiting());
@@ -23,7 +24,7 @@ self.addEventListener('sync', function(event) {
 
 async function handleSync() {
   try {
-    if (!GAS_URL || GAS_URL === 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec') {
+    if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
       console.error('[SW] ❌ GAS_URL not set');
       return;
     }
@@ -75,10 +76,10 @@ async function handleSync() {
   }
 }
 
-// ---------- IndexedDB (Version 2) ----------
+// ---------- IndexedDB ----------
 function openDB() {
   return new Promise(function(resolve, reject) {
-    var req = indexedDB.open('PhotoQueueDB', 2); // ✅ Version bumped to 2
+    var req = indexedDB.open('PhotoQueueDB', 2);
     req.onupgradeneeded = function(e) {
       var db = e.target.result;
       if (db.objectStoreNames.contains('queue')) {
