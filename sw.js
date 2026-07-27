@@ -1,9 +1,9 @@
 // ================================================================
-// sw.js – Service Worker (Sequential Upload)
+// sw.js – Service Worker (Parallel Upload)
 // ================================================================
 
 // ═══════════════════════════════════════════════════════════════
-// ⚠️ CHANGE HERE: Apps Script URL (उही)
+// ⚠️⚠️⚠️ CHANGE HERE: Apps Script URL (उही) ⚠️⚠️⚠️
 // ═══════════════════════════════════════════════════════════════
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';
 
@@ -33,79 +33,75 @@ async function handleSync() {
 
     if (queue.length === 0) return;
 
-    console.log('[SW] 📤 Syncing ' + queue.length + ' photos...');
+    console.log('[SW] 📤 Syncing ' + queue.length + ' photos (Parallel)...');
 
+    // Parallel compressed uploads
+    var compressedPromises = queue.map(function(entry) {
+      return uploadPhoto(entry, 'compressed');
+    });
+
+    var compressedResults = await Promise.all(compressedPromises);
+
+    // Parallel original uploads for successful compressed ones
+    var originalPromises = [];
+    var toRemove = [];
     for (var i = 0; i < queue.length; i++) {
-      var entry = queue[i];
-      try {
-        // 📤 Step 1: Compressed
-        var compressedPayload = {
-          action: 'upload_compressed',
-          photoId: entry.photoId,
-          image: entry.compressed,
-          fileName: entry.compressedFileName || entry.fileName.replace('.png', '_comp.jpg'),
-          createdAt: entry.createdAt || new Date().toISOString()
-        };
-
-        var compressedResp = await fetch(GAS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify(compressedPayload)
-        });
-
-        if (!compressedResp.ok) {
-          throw new Error('Compressed upload HTTP ' + compressedResp.status);
-        }
-
-        var compressedResult = await compressedResp.json();
-        if (!compressedResult.success) {
-          throw new Error('Compressed upload failed: ' + JSON.stringify(compressedResult));
-        }
-
-        console.log('[SW] ✅ Compressed uploaded:', entry.compressedFileName);
-
-        // 📤 Step 2: Original (only if compressed succeeded)
-        var originalPayload = {
-          action: 'upload_original',
-          photoId: entry.photoId,
-          image: entry.original,
-          fileName: entry.fileName,
-          createdAt: entry.createdAt || new Date().toISOString()
-        };
-
-        var originalResp = await fetch(GAS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify(originalPayload)
-        });
-
-        if (!originalResp.ok) {
-          throw new Error('Original upload HTTP ' + originalResp.status);
-        }
-
-        var originalResult = await originalResp.json();
-        if (!originalResult.success) {
-          throw new Error('Original upload failed: ' + JSON.stringify(originalResult));
-        }
-
-        console.log('[SW] ✅ Original uploaded:', entry.fileName);
-
-        // ✅ Both succeeded, remove from queue
-        await removeFromQueue(db, entry.photoId);
-        console.log('[SW] 🎉 Both uploaded:', entry.fileName);
-
-      } catch (err) {
-        console.warn('[SW] ⏳ Retry later:', entry.fileName, err.message);
-        throw err;
+      if (compressedResults[i]) {
+        originalPromises.push(uploadPhoto(queue[i], 'original'));
       }
     }
+
+    var originalResults = await Promise.all(originalPromises);
+
+    // Remove completed entries
+    var idx = 0;
+    for (var j = 0; j < queue.length; j++) {
+      if (compressedResults[j] && originalResults[idx]) {
+        await removeFromQueue(db, queue[j].photoId);
+        console.log('[SW] ✅ Both uploaded:', queue[j].fileName);
+        idx++;
+      }
+    }
+
   } catch (error) {
     console.warn('[SW] Sync error:', error);
     throw error;
   }
 }
 
-// ---------- IndexedDB (Version 2) ----------
+async function uploadPhoto(entry, type) {
+  try {
+    var payload = {
+      action: type === 'compressed' ? 'upload_compressed' : 'upload_original',
+      photoId: entry.photoId,
+      image: type === 'compressed' ? entry.compressed : entry.original,
+      fileName: type === 'compressed' ? entry.compressedFileName : entry.fileName,
+      createdAt: entry.createdAt || new Date().toISOString()
+    };
+
+    var resp = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!resp.ok) {
+      throw new Error('HTTP ' + resp.status);
+    }
+
+    var result = await resp.json();
+    if (result.success) {
+      return true;
+    } else {
+      throw new Error('Upload failed: ' + JSON.stringify(result));
+    }
+  } catch (err) {
+    console.warn('[SW] ⏳ ' + type + ' failed:', entry.fileName, err.message);
+    return false;
+  }
+}
+
+// ---------- IndexedDB ----------
 function openDB() {
   return new Promise(function(resolve, reject) {
     var req = indexedDB.open('PhotoQueueDB', 2);

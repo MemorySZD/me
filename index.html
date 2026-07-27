@@ -24,49 +24,57 @@
     </div>
     <div class="right">
       <button class="top-btn" id="gridBtn">📐 Grid</button>
-      <button class="top-btn" id="timerBtn">⏱️ 0s</button>
       <button class="top-btn" id="flashBtn">🔦 Flash</button>
     </div>
   </div>
 
-  <!-- Camera -->
+  <!-- Camera Container -->
   <div id="camera-container" style="display:none;">
     <video id="video" autoplay playsinline></video>
     <div id="grid-overlay"><div class="hline"></div><div class="hline"></div><div class="vline"></div><div class="vline"></div></div>
     <div id="flash-overlay"></div>
-    <div id="countdown-display"></div>
-    <div id="zoom-indicator">1.0x</div>
-  </div>
-
-  <!-- Zoom Area (Presets + Slider) -->
-  <div id="zoom-area" style="display:none;">
-    <!-- Zoom Presets Buttons -->
-    <div class="zoom-presets">
-      <button class="zoom-preset" data-zoom="0.5">0.5x</button>
-      <button class="zoom-preset" data-zoom="2">2x</button>
-      <button class="zoom-preset" data-zoom="3">3x</button>
-      <button class="zoom-preset" data-zoom="5">5x</button>
-      <button class="zoom-preset" data-zoom="7">7x</button>
-      <button class="zoom-preset" data-zoom="10">10x</button>
-      <button class="zoom-preset" data-zoom="20">20x</button>
-      <button class="zoom-preset" data-zoom="50">50x</button>
-    </div>
-    <!-- Zoom Slider -->
-    <div class="zoom-row">
-      <label>🔍</label>
-      <input type="range" id="zoomSlider" min="0.5" max="50" step="0.1" value="1" />
-      <span id="zoom-value">1.0x</span>
+    
+    <!-- Live Zoom Display (iPhone-style - Clickable) -->
+    <div id="zoom-live-display">
+      <span id="zoom-level-display" onclick="setZoomFromDisplay()">1.0x</span>
+      <span id="zoom-focal-display">26mm</span>
     </div>
   </div>
 
-  <!-- Bottom Bar -->
+  <!-- ===== iPhone-style Zoom Wheel ===== -->
+  <div id="zoom-wheel-area" style="display:none;">
+    <div class="zoom-wheel-container">
+      <div class="zoom-wheel-track" id="zoomWheelTrack">
+        <div class="zoom-marker" data-zoom="0.5"><span class="marker-label">0.5</span><span class="marker-dot"></span></div>
+        <div class="zoom-marker" data-zoom="1"><span class="marker-label">1</span><span class="marker-dot"></span></div>
+        <div class="zoom-marker" data-zoom="2"><span class="marker-label">2</span><span class="marker-dot"></span></div>
+        <div class="zoom-marker" data-zoom="3"><span class="marker-label">3</span><span class="marker-dot"></span></div>
+        <div class="zoom-marker" data-zoom="5"><span class="marker-label">5</span><span class="marker-dot"></span></div>
+        <div class="zoom-marker" data-zoom="10"><span class="marker-label">10</span><span class="marker-dot"></span></div>
+        <div class="zoom-marker" data-zoom="20"><span class="marker-label">20</span><span class="marker-dot"></span></div>
+        <div class="zoom-marker" data-zoom="50"><span class="marker-label">50</span><span class="marker-dot"></span></div>
+        <div class="zoom-marker active" data-zoom="1"><span class="marker-label">1</span><span class="marker-dot"></span></div>
+      </div>
+      <div class="zoom-thumb" id="zoomThumb"><div class="zoom-thumb-inner"></div></div>
+    </div>
+    <div class="zoom-wheel-label">
+      <span class="zoom-current" id="zoomCurrentLabel">1.0x</span>
+      <span class="zoom-focal" id="zoomFocalLabel">26mm</span>
+    </div>
+  </div>
+
+  <!-- Bottom Bar (Modes: PHOTO, PORTRAIT) -->
   <div id="bottom-bar" style="display:none;">
     <div id="gallery-thumb">
       <img id="galleryImg" style="display:none;" alt="Last" />
     </div>
-    <button class="bottom-btn" id="flipBtn"><span class="icon">🔄</span><span class="bottom-label">Flip</span></button>
+    <div class="modes-container">
+      <button class="mode-btn active" data-mode="photo">PHOTO</button>
+      <button class="mode-btn" data-mode="portrait">PORTRAIT</button>
+    </div>
+    <button class="bottom-btn" id="flipBtn"><span class="icon">🔄</span></button>
     <div id="capture-btn"><div class="inner"></div></div>
-    <button class="bottom-btn" id="effectsBtn"><span class="icon">🎨</span><span class="bottom-label">Effect</span></button>
+    <button class="bottom-btn" id="effectsBtn"><span class="icon">🎨</span></button>
     <button class="bottom-btn" id="aspectBtn"><span class="icon">📐</span><span class="bottom-label" id="aspectLabel">16:9</span></button>
   </div>
 
@@ -83,7 +91,7 @@
     <div class="item" data-effect="pixelated">Pixelated</div>
   </div>
   <div class="dropdown-overlay" id="aspectDropdown">
-    <div class="item" data-aspect="free">Free (Full)</div>
+    <div class="item" data-aspect="free">Free</div>
     <div class="item" data-aspect="1:1">1:1</div>
     <div class="item" data-aspect="4:3">4:3</div>
     <div class="item selected" data-aspect="16:9">16:9</div>

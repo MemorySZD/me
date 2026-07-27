@@ -1,12 +1,12 @@
 // ================================================================
-// app.js – Pro Camera PWA (Sequential Upload + Zoom Presets)
+// app.js – Pro Camera PWA (Full Version)
 // ================================================================
 
 (function() {
   'use strict';
 
   // ═══════════════════════════════════════════════════════════════
-  // ⚠️ CHANGE HERE: आफ्नो Google Apps Script URL राख्नुहोस्
+  // ⚠️⚠️⚠️ CHANGE HERE: आफ्नो Google Apps Script URL राख्नुहोस् ⚠️⚠️⚠️
   // ═══════════════════════════════════════════════════════════════
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';
 
@@ -15,7 +15,7 @@
   var permError = document.getElementById('perm-error');
   var topBar = document.getElementById('top-bar');
   var camContainer = document.getElementById('camera-container');
-  var zoomArea = document.getElementById('zoom-area');
+  var zoomWheelArea = document.getElementById('zoom-wheel-area');
   var bottomBar = document.getElementById('bottom-bar');
 
   var video = document.getElementById('video');
@@ -26,12 +26,13 @@
   var statusDot = document.getElementById('statusDot');
   var gridOverlay = document.getElementById('grid-overlay');
   var flashOverlay = document.getElementById('flash-overlay');
-  var countdownDisplay = document.getElementById('countdown-display');
-  var zoomIndicator = document.getElementById('zoom-indicator');
+  var zoomLevelDisplay = document.getElementById('zoom-level-display');
+  var zoomFocalDisplay = document.getElementById('zoom-focal-display');
+  var zoomCurrentLabel = document.getElementById('zoomCurrentLabel');
+  var zoomFocalLabel = document.getElementById('zoomFocalLabel');
   var zoomSlider = document.getElementById('zoomSlider');
   var zoomValue = document.getElementById('zoom-value');
   var gridBtn = document.getElementById('gridBtn');
-  var timerBtn = document.getElementById('timerBtn');
   var flashBtn = document.getElementById('flashBtn');
   var flipBtn = document.getElementById('flipBtn');
   var effectsBtn = document.getElementById('effectsBtn');
@@ -41,28 +42,57 @@
   var aspectDropdown = document.getElementById('aspectDropdown');
   var captureBtn = document.getElementById('capture-btn');
   var galleryThumb = document.getElementById('gallery-thumb');
-  var zoomPresetBtns = document.querySelectorAll('.zoom-preset');
+  var zoomMarkers = document.querySelectorAll('.zoom-marker');
+  var zoomThumb = document.getElementById('zoomThumb');
+  var modeBtns = document.querySelectorAll('.mode-btn');
 
   // ---------- State ----------
   var stream = null;
   var facingMode = 'environment';
   var currentEffect = 'none';
   var currentAspect = '16:9';
-  var zoomMax = 50; // Default, will be updated from camera
+  var currentMode = 'photo'; // 'photo' or 'portrait'
+  var zoomMax = 50;
   var isTorchOn = false;
   var isGridOn = false;
-  var timerSeconds = 0;
   var isCountingDown = false;
   var lastPhotoData = null;
   var swRegistration = null;
   var isCameraReady = false;
+  var currentZoom = 1;
+  var isPortraitSupported = false;
+
+  // Focal length mapping
+  var focalLengths = {
+    0.5: 13,
+    1: 26,
+    2: 52,
+    3: 78,
+    5: 120,
+    10: 240,
+    20: 480,
+    50: 1200
+  };
 
   // ---------- Utility ----------
   function generatePhotoId() {
     return Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
   }
 
-  // ---------- IndexedDB (Version 2) ----------
+  function getFocalLength(zoom) {
+    var closest = 1;
+    var closestDiff = Infinity;
+    for (var key in focalLengths) {
+      var diff = Math.abs(parseFloat(key) - zoom);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closest = parseFloat(key);
+      }
+    }
+    return focalLengths[closest] || Math.round(26 * zoom);
+  }
+
+  // ---------- IndexedDB ----------
   function openDB() {
     return new Promise(function(res, rej) {
       var req = indexedDB.open('PhotoQueueDB', 2);
@@ -133,10 +163,8 @@
     }
   }
 
-  // ---------- Upload Functions (Sequential) ----------
-  
-  // 📤 Upload Compressed Only (50-100 KB)
-  async function uploadCompressed(entry) {
+  // ---------- Upload Functions (Parallel) ----------
+  async function uploadPhoto(entry, type) {
     try {
       if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
         console.error('[Camera] ❌ GAS_URL is not set!');
@@ -144,10 +172,10 @@
       }
 
       var payload = {
-        action: 'upload_compressed',
+        action: type === 'compressed' ? 'upload_compressed' : 'upload_original',
         photoId: entry.photoId,
-        image: entry.compressed,
-        fileName: entry.compressedFileName || entry.fileName.replace('.png', '_comp.jpg'),
+        image: type === 'compressed' ? entry.compressed : entry.original,
+        fileName: type === 'compressed' ? entry.compressedFileName : entry.fileName,
         createdAt: entry.createdAt || new Date().toISOString()
       };
 
@@ -159,67 +187,25 @@
 
       if (!resp.ok) {
         var errorText = await resp.text();
-        console.error('[Camera] ❌ Compressed upload server error:', resp.status, errorText);
+        console.error('[Camera] ❌ ' + type + ' upload error:', resp.status, errorText);
         return false;
       }
 
       var result = await resp.json();
       if (result.success) {
-        console.log('[Camera] ✅ Compressed uploaded:', entry.compressedFileName);
+        console.log('[Camera] ✅ ' + type + ' uploaded:', entry.fileName);
         return true;
       } else {
-        console.error('[Camera] ❌ Compressed upload failed:', result.error);
+        console.error('[Camera] ❌ ' + type + ' upload failed:', result.error);
         return false;
       }
     } catch (err) {
-      console.error('[Camera] ❌ Compressed upload error:', err);
+      console.error('[Camera] ❌ ' + type + ' upload error:', err);
       return false;
     }
   }
 
-  // 📤 Upload Original Only
-  async function uploadOriginal(entry) {
-    try {
-      if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
-        console.error('[Camera] ❌ GAS_URL is not set!');
-        return false;
-      }
-
-      var payload = {
-        action: 'upload_original',
-        photoId: entry.photoId,
-        image: entry.original,
-        fileName: entry.fileName,
-        createdAt: entry.createdAt || new Date().toISOString()
-      };
-
-      var resp = await fetch(GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!resp.ok) {
-        var errorText = await resp.text();
-        console.error('[Camera] ❌ Original upload server error:', resp.status, errorText);
-        return false;
-      }
-
-      var result = await resp.json();
-      if (result.success) {
-        console.log('[Camera] ✅ Original uploaded:', entry.fileName);
-        return true;
-      } else {
-        console.error('[Camera] ❌ Original upload failed:', result.error);
-        return false;
-      }
-    } catch (err) {
-      console.error('[Camera] ❌ Original upload error:', err);
-      return false;
-    }
-  }
-
-  // ---------- Process Queue (Sequential) ----------
+  // ---------- Process Queue (Parallel Upload) ----------
   async function processQueue() {
     if (!navigator.onLine) {
       console.log('[Camera] 🔴 Offline, skipping queue');
@@ -230,45 +216,48 @@
       var pending = await getAllPending();
       if (pending.length === 0) return;
 
-      console.log('[Camera] 📤 Processing ' + pending.length + ' pending photos...');
+      console.log('[Camera] 📤 Processing ' + pending.length + ' pending photos (Parallel)...');
 
+      // 🔥 Parallel Upload: Compressed first for all, then Original
+      var compressedPromises = pending.map(function(entry) {
+        return uploadPhoto(entry, 'compressed');
+      });
+
+      var compressedResults = await Promise.all(compressedPromises);
+
+      // After all compressed are done, upload originals in parallel
+      var originalPromises = [];
       for (var i = 0; i < pending.length; i++) {
-        var entry = pending[i];
-        
-        // 🔄 Step 1: Upload Compressed (50-100 KB)
-        var compressedSuccess = await uploadCompressed(entry);
-        
-        if (!compressedSuccess) {
-          console.warn('[Camera] ⏳ Compressed failed, will retry later:', entry.fileName);
-          var delay = Math.min(Math.pow(2, (entry.retryCount || 0)), 60) * 1000;
-          entry.retryCount = (entry.retryCount || 0) + 1;
-          entry.lastAttempt = Date.now();
-          await addToQueue(entry);
+        if (compressedResults[i]) {
+          originalPromises.push(uploadPhoto(pending[i], 'original'));
+        } else {
+          // Compressed failed, will retry later
+          console.warn('[Camera] ⏳ Compressed failed for:', pending[i].fileName);
+          var delay = Math.min(Math.pow(2, (pending[i].retryCount || 0)), 60) * 1000;
+          pending[i].retryCount = (pending[i].retryCount || 0) + 1;
+          pending[i].lastAttempt = Date.now();
+          await addToQueue(pending[i]);
           setTimeout(function() {
             if (navigator.onLine) processQueue();
           }, delay);
-          break;
         }
-
-        // ✅ Step 2: Upload Original (only if compressed succeeded)
-        var originalSuccess = await uploadOriginal(entry);
-        
-        if (!originalSuccess) {
-          console.warn('[Camera] ⏳ Original failed, will retry later:', entry.fileName);
-          var delay2 = Math.min(Math.pow(2, (entry.retryCount || 0)), 60) * 1000;
-          entry.retryCount = (entry.retryCount || 0) + 1;
-          entry.lastAttempt = Date.now();
-          await addToQueue(entry);
-          setTimeout(function() {
-            if (navigator.onLine) processQueue();
-          }, delay2);
-          break;
-        }
-
-        // ✅ Both succeeded, remove from queue
-        await removeFromQueue(entry.photoId);
-        console.log('[Camera] 🎉 Both compressed & original uploaded:', entry.fileName);
       }
+
+      var originalResults = await Promise.all(originalPromises);
+
+      // Remove photos where both succeeded
+      var toRemove = [];
+      for (var j = 0; j < pending.length; j++) {
+        if (compressedResults[j] && originalResults[j]) {
+          toRemove.push(pending[j].photoId);
+          console.log('[Camera] 🎉 Both uploaded:', pending[j].fileName);
+        }
+      }
+
+      for (var k = 0; k < toRemove.length; k++) {
+        await removeFromQueue(toRemove[k]);
+      }
+
     } catch (e) {
       console.error('[Camera] ❌ Queue processing error:', e);
     }
@@ -276,40 +265,21 @@
 
   // ---------- Capture ----------
   async function capturePhoto() {
-    if (isCountingDown || !isCameraReady) return;
+    if (!isCameraReady) return;
 
-    if (timerSeconds > 0) {
-      isCountingDown = true;
-      var count = timerSeconds;
-      countdownDisplay.textContent = count;
-      countdownDisplay.className = 'show';
-      await new Promise(function(r) { setTimeout(r, 300); });
-      while (count > 0) {
-        countdownDisplay.textContent = count;
-        await new Promise(function(r) { setTimeout(r, 900); });
-        count--;
-        if (count > 0) countdownDisplay.textContent = count;
-      }
-      countdownDisplay.className = '';
-      isCountingDown = false;
-      flashScreen();
-    } else {
-      flashScreen();
-    }
+    flashScreen();
 
     var vw = video.videoWidth || 1280;
     var vh = video.videoHeight || 720;
     canvas.width = vw;
     canvas.height = vh;
 
+    // Apply effect
     ctx.filter = getFilterCSS(currentEffect);
     ctx.drawImage(video, 0, 0, vw, vh);
     ctx.filter = 'none';
 
-    // ✅ Original Quality (PNG - Lossless)
     var originalData = canvas.toDataURL('image/png');
-    
-    // ✅ Compressed Quality (JPEG - 30% Quality for 50-100 KB)
     var compressedData = canvas.toDataURL('image/jpeg', 0.3);
 
     var timestamp = Date.now();
@@ -317,20 +287,15 @@
     var fileName = 'PHOTO_' + new Date().toISOString().replace(/[:.]/g, '') + '_' + photoId + '.png';
     var compressedFileName = fileName.replace('.png', '_comp.jpg');
 
+    // Fly animation
     var img = new Image();
     img.onload = function() { flyToGallery(img); };
     img.src = originalData;
 
-    lastPhotoData = { 
-      original: originalData, 
-      compressed: compressedData,
-      fileName: fileName,
-      photoId: photoId 
-    };
+    lastPhotoData = { original: originalData, compressed: compressedData, fileName: fileName, photoId: photoId };
     galleryImg.src = originalData;
     galleryImg.style.display = 'block';
 
-    // ✅ Queue entry with both qualities
     var entry = {
       photoId: photoId,
       original: originalData,
@@ -355,9 +320,7 @@
   // ---------- Flash ----------
   function flashScreen() {
     flashOverlay.classList.add('active');
-    setTimeout(function() {
-      flashOverlay.classList.remove('active');
-    }, 150);
+    setTimeout(function() { flashOverlay.classList.remove('active'); }, 150);
   }
 
   // ---------- Effects ----------
@@ -390,7 +353,6 @@
 
     var startW = Math.min(cRect.width * 0.5, 200);
     var startH = startW * (imgElement.naturalHeight / imgElement.naturalWidth);
-
     var endW = tRect.width;
     var endH = tRect.height;
 
@@ -432,6 +394,86 @@
       img.style.cursor = 'pointer';
       img.onclick = function() { img.remove(); };
       document.body.appendChild(img);
+    }
+  }
+
+  // ---------- Zoom Functions ----------
+  function setZoom(zoom, smooth) {
+    if (smooth === undefined) smooth = true;
+    var track = stream?.getVideoTracks()[0];
+    var val = Math.min(Math.max(zoom, 0.5), zoomMax);
+
+    if (track && track.getCapabilities().zoom) {
+      track.applyConstraints({ advanced: [{ zoom: val }] }).catch(function() {});
+    } else {
+      video.style.transform = 'scale(' + val + ')';
+      video.style.transformOrigin = 'center center';
+      if (!smooth) {
+        video.style.transition = 'none';
+      } else {
+        video.style.transition = 'transform 0.1s ease';
+      }
+    }
+
+    currentZoom = val;
+
+    // Update displays
+    var displayVal = val.toFixed(1);
+    zoomLevelDisplay.textContent = displayVal + 'x';
+    zoomCurrentLabel.textContent = displayVal + 'x';
+
+    var focal = getFocalLength(val);
+    zoomFocalDisplay.textContent = focal + 'mm';
+    zoomFocalLabel.textContent = focal + 'mm';
+
+    // Update markers
+    zoomMarkers.forEach(function(marker) {
+      var markerZoom = parseFloat(marker.dataset.zoom);
+      if (Math.abs(markerZoom - val) < 0.05) {
+        marker.classList.add('active');
+      } else {
+        marker.classList.remove('active');
+      }
+    });
+
+    // Update thumb position
+    var trackWidth = zoomWheelArea?.querySelector('.zoom-wheel-track')?.offsetWidth || 300;
+    var minZoom = 0.5;
+    var maxZoom = zoomMax;
+    var position = ((val - minZoom) / (maxZoom - minZoom)) * 100;
+    if (zoomThumb) {
+      zoomThumb.style.left = Math.min(Math.max(position, 2), 98) + '%';
+    }
+  }
+
+  function setZoomFromDisplay() {
+    // Cycle through zoom levels on click
+    var levels = [0.5, 1, 2, 3, 5, 10, 20, 50];
+    var current = currentZoom;
+    var next = 1;
+    for (var i = 0; i < levels.length; i++) {
+      if (levels[i] > current + 0.05) {
+        next = levels[i];
+        break;
+      }
+      if (i === levels.length - 1) {
+        next = levels[0];
+      }
+    }
+    setZoom(next, true);
+  }
+
+  // ---------- Portrait Mode Check ----------
+  function checkPortraitSupport() {
+    if (stream) {
+      var track = stream.getVideoTracks()[0];
+      var cap = track.getCapabilities();
+      // Check for depth sensor or portrait capabilities
+      if (cap.focusModes && cap.focusModes.includes('continuous')) {
+        isPortraitSupported = true;
+      } else {
+        isPortraitSupported = false;
+      }
     }
   }
 
@@ -488,37 +530,36 @@
     var track = stream.getVideoTracks()[0];
     var cap = track.getCapabilities();
 
-    // ✅ Zoom: Get hardware max
+    // Zoom max
     if (cap.zoom && cap.zoom.max) {
       zoomMax = Math.max(cap.zoom.max, 50);
     } else {
       zoomMax = 50;
     }
-    zoomSlider.min = 0.5;
-    zoomSlider.max = zoomMax;
-    zoomSlider.value = 1;
-    applyZoom(1);
 
-    // Update zoom preset buttons to show max
-    zoomPresetBtns.forEach(function(btn) {
-      var val = parseFloat(btn.dataset.zoom);
-      if (val > zoomMax) {
-        btn.style.display = 'none';
-      } else {
-        btn.style.display = 'inline-block';
-      }
-    });
+    // Set initial zoom
+    setZoom(1, false);
 
+    // Torch
     if (cap.torch) {
       flashBtn.style.display = 'inline-flex';
     } else {
       flashBtn.style.display = 'inline-flex';
     }
 
+    // Auto-focus
     if (cap.focusModes && cap.focusModes.includes('continuous')) {
       await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
     }
 
+    // Check portrait support
+    checkPortraitSupport();
+    if (!isPortraitSupported) {
+      document.querySelector('.mode-btn[data-mode="portrait"]').style.opacity = '0.3';
+      document.querySelector('.mode-btn[data-mode="portrait"]').style.pointerEvents = 'none';
+    }
+
+    // Tap to focus
     video.onclick = async function(e) {
       if (!track || !cap.focusModes) return;
       var rect = video.getBoundingClientRect();
@@ -545,7 +586,7 @@
     permOverlay.classList.add('hidden');
     topBar.style.display = 'flex';
     camContainer.style.display = 'block';
-    zoomArea.style.display = 'block';
+    zoomWheelArea.style.display = 'block';
     bottomBar.style.display = 'flex';
 
     isCameraReady = true;
@@ -553,37 +594,7 @@
     registerSW();
   }
 
-  // ---------- Zoom ----------
-  function applyZoom(val) {
-    var track = stream?.getVideoTracks()[0];
-    val = Math.min(Math.max(val, 0.5), zoomMax);
-    if (track && track.getCapabilities().zoom) {
-      track.applyConstraints({ advanced: [{ zoom: val }] }).catch(function() {});
-    } else {
-      video.style.transform = 'scale(' + val + ')';
-      video.style.transformOrigin = 'center center';
-    }
-    zoomSlider.value = val;
-    zoomValue.textContent = val.toFixed(1) + 'x';
-    zoomIndicator.textContent = val.toFixed(1) + 'x';
-    zoomIndicator.classList.add('show');
-    clearTimeout(window.zoomTimeout);
-    window.zoomTimeout = setTimeout(function() {
-      zoomIndicator.classList.remove('show');
-    }, 1500);
-
-    // Highlight matching preset
-    zoomPresetBtns.forEach(function(btn) {
-      var presetVal = parseFloat(btn.dataset.zoom);
-      if (Math.abs(presetVal - val) < 0.05) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    });
-  }
-
-  // ---------- Pinch Zoom (Infinity) ----------
+  // ---------- Pinch Zoom (Smooth) ----------
   var lastPinchDist = 0;
   var initialZoomVal = 1;
 
@@ -597,7 +608,7 @@
   document.addEventListener('touchstart', function(e) {
     if (e.touches.length === 2 && isCameraReady) {
       lastPinchDist = getPinchDist(e);
-      initialZoomVal = parseFloat(zoomSlider.value);
+      initialZoomVal = currentZoom;
     }
   }, { passive: true });
 
@@ -607,8 +618,7 @@
       if (lastPinchDist > 0) {
         var scale = dist / lastPinchDist;
         var newVal = initialZoomVal * scale;
-        newVal = Math.min(Math.max(newVal, 0.5), zoomMax);
-        applyZoom(newVal);
+        setZoom(newVal, true);
       }
     }
   }, { passive: true });
@@ -617,17 +627,12 @@
     lastPinchDist = 0;
   }, { passive: true });
 
-  // ---------- Zoom Preset Buttons ----------
-  zoomPresetBtns.forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var val = parseFloat(this.dataset.zoom);
-      applyZoom(val);
+  // ---------- Zoom Markers Click ----------
+  zoomMarkers.forEach(function(marker) {
+    marker.addEventListener('click', function() {
+      var zoom = parseFloat(this.dataset.zoom);
+      setZoom(zoom, true);
     });
-  });
-
-  // ---------- Zoom Slider ----------
-  zoomSlider.addEventListener('input', function() {
-    applyZoom(parseFloat(this.value));
   });
 
   // ---------- Online Status ----------
@@ -645,15 +650,6 @@
     isGridOn = !isGridOn;
     gridOverlay.classList.toggle('show', isGridOn);
     gridBtn.classList.toggle('active', isGridOn);
-  });
-
-  var timerOptions = [0, 3, 5, 10];
-  var timerIndex = 0;
-  timerBtn.addEventListener('click', function() {
-    timerIndex = (timerIndex + 1) % timerOptions.length;
-    timerSeconds = timerOptions[timerIndex];
-    timerBtn.textContent = '⏱️ ' + (timerSeconds === 0 ? '0s' : timerSeconds + 's');
-    timerBtn.classList.toggle('timer-active', timerSeconds > 0);
   });
 
   flashBtn.addEventListener('click', function() {
@@ -674,6 +670,22 @@
     initCamera();
   });
 
+  // Modes: PHOTO, PORTRAIT
+  modeBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      modeBtns.forEach(function(b) { b.classList.remove('active'); });
+      this.classList.add('active');
+      currentMode = this.dataset.mode;
+      console.log('[Camera] Mode changed to:', currentMode);
+      // Portrait mode: if supported, adjust settings
+      if (currentMode === 'portrait' && isPortraitSupported) {
+        // Portrait mode specific adjustments can be added here
+        // For now, just log
+        console.log('[Camera] Portrait mode active');
+      }
+    });
+  });
+
   effectsBtn.addEventListener('click', function(e) {
     e.stopPropagation();
     effectsDropdown.classList.toggle('open');
@@ -682,8 +694,8 @@
   effectsDropdown.querySelectorAll('.item').forEach(function(el) {
     el.addEventListener('click', function() {
       effectsDropdown.querySelectorAll('.item').forEach(function(i) { i.classList.remove('selected'); });
-      el.classList.add('selected');
-      applyEffect(el.dataset.effect);
+      this.classList.add('selected');
+      applyEffect(this.dataset.effect);
       effectsDropdown.classList.remove('open');
     });
   });
@@ -696,8 +708,8 @@
   aspectDropdown.querySelectorAll('.item').forEach(function(el) {
     el.addEventListener('click', async function() {
       aspectDropdown.querySelectorAll('.item').forEach(function(i) { i.classList.remove('selected'); });
-      el.classList.add('selected');
-      currentAspect = el.dataset.aspect;
+      this.classList.add('selected');
+      currentAspect = this.dataset.aspect;
       aspectLabel.textContent = currentAspect;
       aspectDropdown.classList.remove('open');
       if (isCameraReady) await initCamera();
@@ -712,8 +724,8 @@
   captureBtn.addEventListener('click', capturePhoto);
   galleryThumb.addEventListener('click', viewLastPhoto);
 
-  window.capturePhoto = capturePhoto;
-  window.viewLastPhoto = viewLastPhoto;
+  // Expose zoom function for HTML onclick
+  window.setZoomFromDisplay = setZoomFromDisplay;
 
   // ---------- Start ----------
   if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
