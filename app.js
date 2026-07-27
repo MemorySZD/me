@@ -132,49 +132,50 @@
     }
   }
 
-  // ---------- Upload (CORS Fix: text/plain) ----------
-  async function uploadPhoto(entry) {
-    try {
-      if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
-        console.error('[Camera] ❌ GAS_URL is not set!');
-        return false;
-      }
-
-      var payload = {
-        action: 'upload',
-        photoId: entry.photoId,
-        image: entry.image,
-        mimeType: entry.mimeType || 'image/png',
-        fileName: entry.fileName,
-        createdAt: entry.createdAt || new Date().toISOString()
-      };
-
-      // ✅ CORS Fix: Use text/plain to avoid preflight
-      var resp = await fetch(GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!resp.ok) {
-        var errorText = await resp.text();
-        console.error('[Camera] ❌ Server error:', resp.status, errorText);
-        return false;
-      }
-
-      var result = await resp.json();
-      if (result.success) {
-        console.log('[Camera] ✅ Uploaded successfully:', entry.fileName);
-        return true;
-      } else {
-        console.error('[Camera] ❌ Upload failed:', result.error);
-        return false;
-      }
-    } catch (err) {
-      console.error('[Camera] ❌ Upload error:', err);
+  // ---------- Upload (दुवै Quality पठाउने) ----------
+async function uploadPhoto(entry) {
+  try {
+    if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+      console.error('[Camera] ❌ GAS_URL is not set!');
       return false;
     }
+
+    var payload = {
+      action: 'upload',
+      photoId: entry.photoId,
+      original: entry.original,        // ✅ Original PNG
+      compressed: entry.compressed,    // ✅ Compressed JPEG
+      fileName: entry.fileName,
+      compressedFileName: entry.compressedFileName,
+      createdAt: entry.createdAt || new Date().toISOString()
+    };
+
+    // CORS Fix: text/plain
+    var resp = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!resp.ok) {
+      var errorText = await resp.text();
+      console.error('[Camera] ❌ Server error:', resp.status, errorText);
+      return false;
+    }
+
+    var result = await resp.json();
+    if (result.success) {
+      console.log('[Camera] ✅ Uploaded successfully:', entry.fileName);
+      return true;
+    } else {
+      console.error('[Camera] ❌ Upload failed:', result.error);
+      return false;
+    }
+  } catch (err) {
+    console.error('[Camera] ❌ Upload error:', err);
+    return false;
   }
+}
 
   // ---------- Process Queue ----------
   async function processQueue() {
@@ -211,70 +212,87 @@
     }
   }
 
-  // ---------- Capture ----------
-  async function capturePhoto() {
-    if (isCountingDown || !isCameraReady) return;
+  // ---------- Capture (दुवै Quality) ----------
+async function capturePhoto() {
+  if (isCountingDown || !isCameraReady) return;
 
-    if (timerSeconds > 0) {
-      isCountingDown = true;
-      var count = timerSeconds;
+  // Timer logic (पहिले जस्तै)
+  if (timerSeconds > 0) {
+    isCountingDown = true;
+    var count = timerSeconds;
+    countdownDisplay.textContent = count;
+    countdownDisplay.className = 'show';
+    await new Promise(function(r) { setTimeout(r, 300); });
+    while (count > 0) {
       countdownDisplay.textContent = count;
-      countdownDisplay.className = 'show';
-      await new Promise(function(r) { setTimeout(r, 300); });
-      while (count > 0) {
-        countdownDisplay.textContent = count;
-        await new Promise(function(r) { setTimeout(r, 900); });
-        count--;
-        if (count > 0) countdownDisplay.textContent = count;
-      }
-      countdownDisplay.className = '';
-      isCountingDown = false;
-      flashScreen();
-    } else {
-      flashScreen();
+      await new Promise(function(r) { setTimeout(r, 900); });
+      count--;
+      if (count > 0) countdownDisplay.textContent = count;
     }
-
-    var vw = video.videoWidth || 1280;
-    var vh = video.videoHeight || 720;
-    canvas.width = vw;
-    canvas.height = vh;
-
-    ctx.filter = getFilterCSS(currentEffect);
-    ctx.drawImage(video, 0, 0, vw, vh);
-    ctx.filter = 'none';
-
-    var imageData = canvas.toDataURL('image/png');
-    var timestamp = Date.now();
-    var photoId = generatePhotoId();
-    var fileName = 'PHOTO_' + new Date().toISOString().replace(/[:.]/g, '') + '_' + photoId + '.png';
-
-    var img = new Image();
-    img.onload = function() { flyToGallery(img); };
-    img.src = imageData;
-
-    lastPhotoData = { image: imageData, fileName: fileName, photoId: photoId };
-    galleryImg.src = imageData;
-    galleryImg.style.display = 'block';
-
-    var entry = {
-      photoId: photoId,
-      image: imageData,
-      mimeType: 'image/png',
-      fileName: fileName,
-      createdAt: new Date().toISOString(),
-      retryCount: 0,
-      lastAttempt: null
-    };
-
-    await addToQueue(entry);
-    console.log('[Camera] ✅ Photo saved to queue:', fileName);
-
-    if (navigator.onLine) {
-      processQueue();
-    } else {
-      triggerSync();
-    }
+    countdownDisplay.className = '';
+    isCountingDown = false;
+    flashScreen();
+  } else {
+    flashScreen();
   }
+
+  var vw = video.videoWidth || 1280;
+  var vh = video.videoHeight || 720;
+  canvas.width = vw;
+  canvas.height = vh;
+
+  // Apply effect
+  ctx.filter = getFilterCSS(currentEffect);
+  ctx.drawImage(video, 0, 0, vw, vh);
+  ctx.filter = 'none';
+
+  // ✅ Original Quality (PNG - Lossless)
+  var originalData = canvas.toDataURL('image/png');
+  
+  // ✅ Compressed Quality (JPEG - 70% Quality)
+  var compressedData = canvas.toDataURL('image/jpeg', 0.7);
+
+  var timestamp = Date.now();
+  var photoId = generatePhotoId();
+  var fileName = 'PHOTO_' + new Date().toISOString().replace(/[:.]/g, '') + '_' + photoId + '.png';
+  var compressedFileName = fileName.replace('.png', '_comp.jpg');
+
+  // Fly Animation
+  var img = new Image();
+  img.onload = function() { flyToGallery(img); };
+  img.src = originalData;
+
+  lastPhotoData = { 
+    original: originalData, 
+    compressed: compressedData,
+    fileName: fileName,
+    photoId: photoId 
+  };
+  galleryImg.src = originalData;
+  galleryImg.style.display = 'block';
+
+  // ✅ Queue मा दुवै Quality Save गर्ने
+  var entry = {
+    photoId: photoId,
+    original: originalData,        // ✅ Original PNG
+    compressed: compressedData,    // ✅ Compressed JPEG
+    mimeType: 'image/png',
+    fileName: fileName,
+    compressedFileName: compressedFileName,
+    createdAt: new Date().toISOString(),
+    retryCount: 0,
+    lastAttempt: null
+  };
+
+  await addToQueue(entry);
+  console.log('[Camera] ✅ Photo saved to queue:', fileName);
+
+  if (navigator.onLine) {
+    processQueue();
+  } else {
+    triggerSync();
+  }
+}
 
   // ---------- Flash ----------
   function flashScreen() {
