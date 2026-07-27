@@ -1,5 +1,5 @@
 // ================================================================
-// sw.js – Service Worker for Offline & Background Sync
+// sw.js – Service Worker
 // ================================================================
 
 // ═══════════════════════════════════════════════════════════════
@@ -75,15 +75,16 @@ async function handleSync() {
   }
 }
 
-// ---------- IndexedDB Helpers ----------
+// ---------- IndexedDB (Version 2) ----------
 function openDB() {
   return new Promise(function(resolve, reject) {
-    var req = indexedDB.open('PhotoQueueDB', 1);
+    var req = indexedDB.open('PhotoQueueDB', 2); // ✅ Version bumped to 2
     req.onupgradeneeded = function(e) {
       var db = e.target.result;
-      if (!db.objectStoreNames.contains('queue')) {
-        db.createObjectStore('queue', { keyPath: 'photoId' });
+      if (db.objectStoreNames.contains('queue')) {
+        db.deleteObjectStore('queue');
       }
+      db.createObjectStore('queue', { keyPath: 'photoId' });
     };
     req.onsuccess = function() { resolve(req.result); };
     req.onerror = function() { reject(req.error); };
