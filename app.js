@@ -1,6 +1,5 @@
 // ================================================================
 // app.js – Pro Camera PWA
-// यो Apps Script (Code.gs) सँग मिल्ने गरी बनाइएको छ
 // ================================================================
 
 (function() {
@@ -63,15 +62,17 @@
     return Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
   }
 
-  // ---------- IndexedDB (Offline Queue) ----------
+  // ---------- IndexedDB (Offline Queue) with Version 2 ----------
   function openDB() {
     return new Promise(function(res, rej) {
-      var req = indexedDB.open('PhotoQueueDB', 1);
+      var req = indexedDB.open('PhotoQueueDB', 2); // ✅ Version bumped to 2
       req.onupgradeneeded = function(e) {
         var db = e.target.result;
-        if (!db.objectStoreNames.contains('queue')) {
-          db.createObjectStore('queue', { keyPath: 'photoId' });
+        // Delete old store if exists (to ensure correct keyPath)
+        if (db.objectStoreNames.contains('queue')) {
+          db.deleteObjectStore('queue');
         }
+        db.createObjectStore('queue', { keyPath: 'photoId' });
       };
       req.onsuccess = function() { res(req.result); };
       req.onerror = function() { rej(req.error); };
@@ -141,12 +142,10 @@
         return false;
       }
 
-      // Apps Script ले यी फिल्डहरू Expect गर्छ:
-      // action: "upload", photoId, image (Base64), mimeType, fileName, createdAt
       var payload = {
         action: 'upload',
         photoId: entry.photoId,
-        image: entry.image, // Already Base64
+        image: entry.image,
         mimeType: entry.mimeType || 'image/png',
         fileName: entry.fileName,
         createdAt: entry.createdAt || new Date().toISOString()
@@ -198,7 +197,6 @@
           await removeFromQueue(entry.photoId);
         } else {
           console.warn('[Camera] ⏳ Retry later:', entry.fileName);
-          // Exponential backoff
           var delay = Math.min(Math.pow(2, (entry.retryCount || 0)), 60) * 1000;
           entry.retryCount = (entry.retryCount || 0) + 1;
           entry.lastAttempt = Date.now();
@@ -218,7 +216,6 @@
   async function capturePhoto() {
     if (isCountingDown || !isCameraReady) return;
 
-    // Timer countdown
     if (timerSeconds > 0) {
       isCountingDown = true;
       var count = timerSeconds;
@@ -238,24 +235,20 @@
       flashScreen();
     }
 
-    // Capture from video
     var vw = video.videoWidth || 1280;
     var vh = video.videoHeight || 720;
     canvas.width = vw;
     canvas.height = vh;
 
-    // Apply effect
     ctx.filter = getFilterCSS(currentEffect);
     ctx.drawImage(video, 0, 0, vw, vh);
     ctx.filter = 'none';
 
-    // Get image as PNG (original quality)
     var imageData = canvas.toDataURL('image/png');
     var timestamp = Date.now();
     var photoId = generatePhotoId();
     var fileName = 'PHOTO_' + new Date().toISOString().replace(/[:.]/g, '') + '_' + photoId + '.png';
 
-    // Show in gallery (fly animation)
     var img = new Image();
     img.onload = function() { flyToGallery(img); };
     img.src = imageData;
@@ -264,7 +257,7 @@
     galleryImg.src = imageData;
     galleryImg.style.display = 'block';
 
-    // Save to IndexedDB queue
+    // ✅ Ensure entry has 'photoId' property
     var entry = {
       photoId: photoId,
       image: imageData,
@@ -274,10 +267,10 @@
       retryCount: 0,
       lastAttempt: null
     };
+
     await addToQueue(entry);
     console.log('[Camera] ✅ Photo saved to queue:', fileName);
 
-    // Try upload immediately if online
     if (navigator.onLine) {
       processQueue();
     } else {
@@ -619,7 +612,7 @@
   window.viewLastPhoto = viewLastPhoto;
 
   // ---------- Start ----------
-  if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+  if (!GAS_URL || GAS_URL === 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec') {
     console.warn('[Camera] ⚠️ GAS_URL not set. Update app.js with your Apps Script URL.');
   }
 
