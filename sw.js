@@ -3,10 +3,9 @@
 // ================================================================
 
 // ═══════════════════════════════════════════════════════════════
-// ⚠️⚠️⚠️ CHANGE HERE: यहाँ पनि उही URL राख्नुहोस् ⚠️⚠️⚠️
-//    (app.js मा राखेको जस्तै)
+// ⚠️⚠️⚠️ CHANGE HERE: Apps Script URL (उही) ⚠️⚠️⚠️
 // ═══════════════════════════════════════════════════════════════
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';  // ✅ यो लाइन मात्र Change गर्नुहोस्
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';
 
 self.addEventListener('install', function(event) {
   event.waitUntil(self.skipWaiting());
@@ -48,9 +47,10 @@ async function handleSync() {
           createdAt: entry.createdAt || new Date().toISOString()
         };
 
+        // ✅ CORS Fix: Use text/plain to avoid preflight
         var resp = await fetch(GAS_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify(payload)
         });
 
@@ -76,7 +76,7 @@ async function handleSync() {
   }
 }
 
-// ---------- IndexedDB ----------
+// ---------- IndexedDB (Version 2) ----------
 function openDB() {
   return new Promise(function(resolve, reject) {
     var req = indexedDB.open('PhotoQueueDB', 2);

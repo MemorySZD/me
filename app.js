@@ -7,10 +7,8 @@
 
   // ═══════════════════════════════════════════════════════════════
   // ⚠️⚠️⚠️ CHANGE HERE: आफ्नो Google Apps Script URL राख्नुहोस् ⚠️⚠️⚠️
-  //    URL Deploy गरेपछि प्राप्त हुन्छ (अन्त्यमा /exec हुनुपर्छ)
-  //    उदाहरण: https://script.google.com/macros/s/AKfycbx.../exec
   // ═══════════════════════════════════════════════════════════════
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';  // ✅ यो लाइन मात्र Change गर्नुहोस्
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbxnaLHwDYVVIcQmGZklgLLnI2VETzhI89RRfwPhJPNzmE5pQRuh3s1U72V0YDIuqj9TLw/exec';
 
   // ---------- DOM Refs ----------
   var permOverlay = document.getElementById('permission-overlay');
@@ -57,7 +55,6 @@
   var lastPhotoData = null;
   var swRegistration = null;
   var isCameraReady = false;
-  var photoQueue = [];
 
   // ---------- Utility ----------
   function generatePhotoId() {
@@ -135,10 +132,9 @@
     }
   }
 
-  // ---------- Upload ----------
+  // ---------- Upload (CORS Fix: text/plain) ----------
   async function uploadPhoto(entry) {
     try {
-      // ✅ GAS_URL सेट छ कि छैन Check गर्ने
       if (!GAS_URL || GAS_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
         console.error('[Camera] ❌ GAS_URL is not set!');
         return false;
@@ -153,9 +149,10 @@
         createdAt: entry.createdAt || new Date().toISOString()
       };
 
+      // ✅ CORS Fix: Use text/plain to avoid preflight
       var resp = await fetch(GAS_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
       });
 
