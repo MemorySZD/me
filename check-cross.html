@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS Status Checker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            text-align: center;
+            padding: 50px;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+            display: inline-block;
+            max-width: 500px;
+            width: 100%;
+        }
+        input {
+            width: 80%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #result {
+            margin-top: 20px;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>CORS Status Checker</h2>
+        <p>जाँच्न चाहनुहुन्छ भने API को URL तल राख्नुहोस्:</p>
+        
+        <input type="text" id="apiUrl" value="https://jsonplaceholder.typicode.com/posts/1" placeholder="API URL यहाँ हाल्नुहोस्">
+        <br>
+        <button onclick="checkCORS()">CORS चेक गर्नुहोस्</button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function checkCORS() {
+            const url = document.getElementById('apiUrl').value;
+            const resultDiv = document.getElementById('result');
+            
+            resultDiv.innerHTML = "जाँच्दैछ... कृपया पर्खनुहोस् ⏳";
+            resultDiv.className = "";
+
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+
+                if (response.ok) {
+                    resultDiv.innerHTML = "✅ CORS खुला (On) छ! डेटा सफलतापूर्वक फेच भयो।";
+                    resultDiv.className = "success";
+                } else {
+                    resultDiv.innerHTML = `⚠️ सर्भरसम्म पुग्यो तर एरर आयो। Status: ${response.status}`;
+                    resultDiv.className = "error";
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `❌ CORS बन्द (Blocked) छ!<br><small>${error.message}</small>`;
+                resultDiv.className = "error";
+            }
+        }
+    </script>
+
+</body>
+</html>
